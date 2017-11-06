@@ -48,6 +48,33 @@ test_loader = torch.utils.data.DataLoader(
     batch_size=batch_size, shuffle=True)
 
 
+#%%
+""" Custom ReLU function """
+class customReLuFn(Function):
+    @staticmethod
+    def forward(ctx, input):
+        ctx.save_for_backward(input)
+        output = input.clone()
+        output[output < 0] = output[output < 0]
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, = ctx.saved_variables
+        grad_input = None
+
+        grad_input = Variable(torch.zeros(grad_output.size()))
+        grad_input[input > 0] = 1
+
+        return grad_output * grad_input
+
+class customReLU(nn.Module):
+    def __init__(self):
+        super(customReLU, self).__init__()
+
+    def forward(self, input):
+        return customReLuFn.apply(input)
+
 # In[3]:
 
 
@@ -61,7 +88,8 @@ class CNN(nn.Module):
         self.fc1   = nn.Linear(16*4*4, 120)
         self.fc2   = nn.Linear(120, 84)
         self.fc3   = nn.Linear(84, 10)
-        self.relu1 = nn.ReLU(inplace=True)
+        self.relu1 = customReLU()
+#        self.relu1 = nn.ReLU(inplace=True)
         self.relu2 = nn.ReLU(inplace=True)
         self.relu3 = nn.ReLU(inplace=True)
         self.relu4 = nn.ReLU(inplace=True)
