@@ -52,28 +52,33 @@ test_loader = torch.utils.data.DataLoader(
 """ Custom ReLU function """
 class customReLuFn(Function):
     @staticmethod
-    def forward(ctx, input):
-        ctx.save_for_backward(input)
+    def forward(ctx, input, alpha):
+        ctx.save_for_backward(input, alpha)
         output = input.clone()
-        output[output < 0] = output[output < 0]
+        output[output < 0] = alpha.expand_as(output[output < 0]) * output[output < 0]
         return output
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, = ctx.saved_variables
-        grad_input = None
+        input, alpha = ctx.saved_variables
+        grad_input = grad_alpha = None
 
-        grad_input = Variable(torch.zeros(grad_output.size()))
+        grad_input = alpha.expand_as(grad_output).clone()
         grad_input[input > 0] = 1
 
-        return grad_output * grad_input
+        grad_alpha = Variable(torch.zeros(grad_output.size()))
+        grad_alpha[input <= 0] = input[input <= 0]
+        
+        return grad_output * grad_input, (grad_output * grad_alpha).sum()
 
 class customReLU(nn.Module):
     def __init__(self):
         super(customReLU, self).__init__()
+        self.alpha = nn.Parameter(torch.Tensor(1))
+        self.alpha.data.uniform_(0, 0.1)
 
     def forward(self, input):
-        return customReLuFn.apply(input)
+        return customReLuFn.apply(input, self.alpha)
 
 # In[3]:
 
