@@ -80,6 +80,49 @@ class customReLU(nn.Module):
     def forward(self, input):
         return customReLuFn.apply(input, self.alpha)
 
+#%%
+""" Custom Conv2D function """
+class customConv2DFn(Function):
+    @staticmethod
+    def forward(ctx, input, weight):
+        ctx.save_for_backward(input, weight)
+        np_input = input.numpy()
+        np_weight = weight.numpy()
+        n, m = np_input.shape
+        p, q = np_weight.shape
+        output = torch.from_numpy(
+                     np.fft.ifftn(
+                        np.multiply(
+                            np.fft.fftn(np_weight, (n+p-1, m+q-1)), 
+                            np.fft.fftn(np_input), (n+p-1, m+q-1)
+                        ), (n, m)))
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, weigth = ctx.saved_variables
+        grad_input = grad_weigth = None
+
+        np_input = input.numpy()
+        np_weight = weight.numpy()
+        np_grad_output = grad_output.numpy()
+        n, m = np_input.shape
+        p, q = np_weight.shape
+        output = Variable(torch.from_numpy(
+                     np.fft.ifftn(
+                        np.multiply(
+                            np.fft.fftn(np_weight, (n+p-1, m+q-1)), 
+                            np.fft.fftn(np_input), (n+p-1, m+q-1)
+                        ), (n, m))))
+
+        return grad_output * grad_input, grad_weigth
+
+class customConv2D(nn.Module):
+    def __init__(self):
+        super(customReLU, self).__init__()
+
+    def forward(self, input):
+        return customReLuFn.apply(input)
 # In[3]:
 
 
