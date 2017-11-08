@@ -14,7 +14,7 @@ import torch.optim as optim
 from torch.autograd import Variable, Function
 
 import numpy as np
-
+import scipy.signal as sig
 import matplotlib
 import matplotlib.pyplot as plt
 try:
@@ -23,7 +23,6 @@ except(Exception):
     pass
 
 cuda = False
-
 
 # In[2]:
 
@@ -68,13 +67,15 @@ class customReLuFn(Function):
 
         grad_alpha = Variable(torch.zeros(grad_output.size()))
         grad_alpha[input <= 0] = input[input <= 0]
-        
-        return grad_output * grad_input, (grad_output * grad_alpha).sum()
+        grad_alpha = grad_output * grad_alpha
+
+#        print((grad_alpha.sum(2).sum(3)).size())
+        return grad_output * grad_input, grad_alpha.sum(2).sum(3)
 
 class customReLU(nn.Module):
     def __init__(self):
         super(customReLU, self).__init__()
-        self.alpha = nn.Parameter(torch.Tensor(1))
+        self.alpha = nn.Parameter(torch.Tensor(128,1,1,1))
         self.alpha.data.uniform_(0, 0.1)
 
     def forward(self, input):
@@ -88,41 +89,53 @@ class customConv2DFn(Function):
         ctx.save_for_backward(input, weight)
         np_input = input.numpy()
         np_weight = weight.numpy()
-        n, m = np_input.shape
+#        n, m = np_input.shape
         p, q = np_weight.shape
-        output = torch.from_numpy(
-                     np.fft.ifftn(
-                        np.multiply(
-                            np.fft.fftn(np_weight, (n+p-1, m+q-1)), 
-                            np.fft.fftn(np_input), (n+p-1, m+q-1)
-                        ), (n, m)))
+        a,b,c,d=np_input.shape
+#        print(a,b,c,d)
+        output1=np.zeros((a,b,c+p-1,d+q-1))
+        for n in range(a):
+            for m in range(b):
+                output1[n,m] = sig.convolve2d(np_input[n,m], np_weight)
+        output=torch.from_numpy(output1).float()
+#        print('here',type(output))
         return output
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, weigth = ctx.saved_variables
-        grad_input = grad_weigth = None
+        input, weight = ctx.saved_tensors
+#        grad_input = grad_weigth = None
 
         np_input = input.numpy()
         np_weight = weight.numpy()
-        np_grad_output = grad_output.numpy()
-        n, m = np_input.shape
+        np_grad_output = grad_output.data.numpy()
+#        np_grad_output = grad_output.numpy()
+        a,b,c,d = np_input.shape
         p, q = np_weight.shape
-        output = Variable(torch.from_numpy(
-                     np.fft.ifftn(
-                        np.multiply(
-                            np.fft.fftn(np_weight, (n+p-1, m+q-1)), 
-                            np.fft.fftn(np_input), (n+p-1, m+q-1)
-                        ), (n, m))))
-
-        return grad_output * grad_input, grad_weigth
+        np_grad_input = np.zeros((a,b,c,d))
+        np_grad_weight = np.zeros((a,b,p,q))
+#        print('here:::: np_output:',np_output.shape,', np_output_w:',
+#              np_output_w.shape,'np_grad_output:',np_grad_output.shape)
+        for n in range(a):
+            for m in range(b):
+                np_grad_input[n,m] = sig.convolve2d(
+                        np_grad_output[n,m], 
+                        np_weight[::-1,::-1])[p-1:-(p-1),q-1:-(q-1)]
+                np_grad_weight[n,m] = sig.convolve2d(
+                        np_input[n,m,::-1,::-1], 
+                        np_grad_output[n,m])[c-1:-(c-1),d-1:-(d-1)]
+        print('customConv2DFn::backward: ', np_grad_input.shape, np_grad_weight.shape)
+        return Variable(torch.from_numpy(np_grad_input)), \
+               Variable(torch.from_numpy(np_grad_weight.sum(0).squeeze()))
 
 class customConv2D(nn.Module):
     def __init__(self):
-        super(customReLU, self).__init__()
+        super(customConv2D, self).__init__()
+        self.weight = nn.Parameter(torch.randn(5,5))
+#        self.weight.data.randn(0, 0.1)
 
     def forward(self, input):
-        return customReLuFn.apply(input)
+        return customConv2DFn.apply(input, self.weight)
 # In[3]:
 
 
@@ -131,13 +144,14 @@ class customConv2D(nn.Module):
 class CNN(nn.Module):
     def __init__(self):
         super(CNN, self).__init__()
+        self.conv0 = customConv2D()
         self.conv1 = nn.Conv2d(1, 1, 5)
         self.conv2 = nn.Conv2d(1, 16, 5)
         self.fc1   = nn.Linear(16*4*4, 120)
         self.fc2   = nn.Linear(120, 84)
         self.fc3   = nn.Linear(84, 10)
-        self.relu1 = customReLU()
-#        self.relu1 = nn.ReLU(inplace=True)
+        self.relu0 = customReLU()
+        self.relu1 = nn.ReLU(inplace=True)
         self.relu2 = nn.ReLU(inplace=True)
         self.relu3 = nn.ReLU(inplace=True)
         self.relu4 = nn.ReLU(inplace=True)
@@ -145,7 +159,9 @@ class CNN(nn.Module):
         self.maxpool2 = nn.MaxPool2d(2,2)
         
     def forward(self, x):
-        out = self.relu1(self.conv1(x))
+#        out = self.relu1(self.conv0(x))
+#        out = self.relu1(self.conv1(out))
+        out = self.relu0(self.conv1(x))
         out = self.maxpool1(out)
         out = self.relu2(self.conv2(out))
         out = self.maxpool2(out)
