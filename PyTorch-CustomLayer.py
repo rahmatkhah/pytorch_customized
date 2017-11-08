@@ -147,7 +147,8 @@ class CNN(nn.Module):
     def __init__(self):
         super(CNN, self).__init__()
         self.conv0 = customConv2D()
-        self.conv1 = nn.Conv2d(1, 1, 5)
+        self.conv11 = nn.Conv2d(1, 1, 5)
+        self.conv12 = nn.Conv2d(1, 1, 5)
         self.conv2 = nn.Conv2d(1, 16, 5)
         self.fc1   = nn.Linear(16*4*4, 120)
         self.fc2   = nn.Linear(120, 84)
@@ -161,9 +162,9 @@ class CNN(nn.Module):
         self.maxpool2 = nn.MaxPool2d(2,2)
         
     def forward(self, x):
-#        out = self.relu1(self.conv0(x))
-#        out = self.relu1(self.conv1(out))
-        out = self.relu0(self.conv1(x))
+        out = self.relu1(self.conv0(x))
+        out = self.relu1(self.conv11(out))
+        out = self.relu1(self.conv12(out))
         out = self.maxpool1(out)
         out = self.relu2(self.conv2(out))
         out = self.maxpool2(out)
