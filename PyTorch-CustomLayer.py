@@ -12,6 +12,7 @@ import torchvision
 import torch.nn as nn
 import torch.optim as optim
 from torch.autograd import Variable, Function
+import pytorch_fft.fft as fft
 
 import numpy as np
 import scipy.signal as sig
@@ -22,7 +23,7 @@ try:
 except(Exception):
     pass
 
-cuda = False
+cuda = True
 
 # In[2]:
 
@@ -93,23 +94,45 @@ class customConv2DFn(Function):
             input = input.cpu()
             weight = weight.cpu()
 
-        np_input = input.numpy()
-        np_weight = weight.numpy()
-        p, q = np_weight.shape
-        a, b, c, d = np_input.shape
-        np_output = np.zeros((a, b, c+p-1, d+q-1))
-        for n in range(a):
-            for m in range(b):
-#               np_output[n,m] = sig.convolve2d(np_input[n,m], np_weight)
-                
-                np_output[n,m] = np.fft.ifft2(np.multiply(
-                        np.fft.fftn(np_input[n,m], (c+p-1, d+q-1)),
-                        np.fft.fftn(np_weight, (c+p-1, d+q-1))
-                            )).real
-        output = torch.from_numpy(np_output).float()
+        a, b, c, d = input.size()
+        p, q = weight.size()
+        output = torch.zeros(a, b, c+p-1, d+q-1).cuda()
         
-        if cuda:
-            output = output.cuda()
+        for m in range(b):
+            input_padded = torch.zeros(a, c+p-1, d+q-1)
+            input_padded[:, 0:c, 0:d] = input[:,b,:,:]
+            input_padded = input_padded.cuda()
+
+            weight_padded = torch.zeros(a, c+p-1, d+q-1)
+            weight_padded[:, 0:p, 0:q] = weight
+            weight_padded = weight_padded.cuda()
+
+            fft_input_weight_mult = \
+                fft.fft2(input_padded[:,b,:,:], torch.zeros(a, c+p-1, d+q-1).cuda()) \
+                    * \
+                fft.fft2(weight_padded, torch.zeros(a, c+p-1, d+q-1).cuda())
+            
+            output[:,b,:,:] = fft.ifft2(
+                    torch.from_numpy(fft_input_weight_mult.numpy().real),
+                    torch.from_numpy(fft_input_weight_mult.numpy().complex))
+         
+#        np_input = input.numpy()
+#        np_weight = weight.numpy()
+#        p, q = np_weight.shape
+#        a, b, c, d = np_input.shape
+#        np_output = np.zeros((a, b, c+p-1, d+q-1))
+#        for n in range(a):
+#            for m in range(b):
+##               np_output[n,m] = sig.convolve2d(np_input[n,m], np_weight)
+#                
+#                np_output[n,m] = np.fft.ifft2(np.multiply(
+#                        np.fft.fftn(np_input[n,m], (c+p-1, d+q-1)),
+#                        np.fft.fftn(np_weight, (c+p-1, d+q-1))
+#                            )).real
+#        output = torch.from_numpy(np_output).float()
+#        
+#        if cuda:
+#            output = output.cuda()
         return output
 
     @staticmethod
