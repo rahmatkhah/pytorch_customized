@@ -101,6 +101,7 @@ class customConv2DFn(Function):
         for n in range(a):
             for m in range(b):
 #               np_output[n,m] = sig.convolve2d(np_input[n,m], np_weight)
+                
                 np_output[n,m] = np.fft.ifft2(np.multiply(
                         np.fft.fftn(np_input[n,m], (c+p-1, d+q-1)),
                         np.fft.fftn(np_weight, (c+p-1, d+q-1))
@@ -158,7 +159,7 @@ class customConv2DFn(Function):
 class customConv2D(nn.Module):
     def __init__(self):
         super(customConv2D, self).__init__()
-        self.weight = nn.Parameter(torch.randn(5,5))
+        self.weight = nn.Parameter(torch.randn(5,5)/2)
 #        self.weight.data.randn(0, 0.1)
 
     def forward(self, input):
