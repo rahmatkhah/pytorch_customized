@@ -22,7 +22,7 @@ try:
 except(Exception):
     pass
 
-cuda = False
+cuda = True
 
 # In[2]:
 
@@ -89,17 +89,18 @@ class customConv2DFn(Function):
     @staticmethod
     def forward(ctx, input, weight):
         ctx.save_for_backward(input, weight)
-        np_input = input.numpy()
-        np_weight = weight.numpy()
+        np_input = input.cpu().numpy()
+        np_weight = weight.cpu().numpy()
 #        n, m = np_input.shape
         p, q = np_weight.shape
         a,b,c,d=np_input.shape
 #        print(a,b,c,d)
         output1=np.zeros((a,b,c+p-1,d+q-1))
         for n in range(a):
-            for m in range(b):
-                output1[n,m] = sig.convolve2d(np_input[n,m], np_weight)
-        output=torch.from_numpy(output1).float()
+            m=0
+#            for m in range(b):
+            output1[n,m] = sig.convolve2d(np_input[n,m], np_weight)
+        output=torch.from_numpy(output1).float().cuda()
 #        print('here',type(output))
         return output
 
@@ -108,9 +109,9 @@ class customConv2DFn(Function):
         input, weight = ctx.saved_tensors
 #        grad_input = grad_weigth = None
 
-        np_input = input.numpy()
-        np_weight = weight.numpy()
-        np_grad_output = grad_output.data.numpy()
+        np_input = input.cpu().numpy()
+        np_weight = weight.cpu().numpy()
+        np_grad_output = grad_output.data.cpu().numpy()
 #        np_grad_output = grad_output.numpy()
         a,b,c,d = np_input.shape
         p, q = np_weight.shape
@@ -119,16 +120,17 @@ class customConv2DFn(Function):
 #        print('here:::: np_output:',np_output.shape,', np_output_w:',
 #              np_output_w.shape,'np_grad_output:',np_grad_output.shape)
         for n in range(a):
-            for m in range(b):
-                np_grad_input[n,m] = sig.convolve2d(
-                        np_grad_output[n,m], 
-                        np_weight[::-1,::-1])[p-1:-(p-1),q-1:-(q-1)]
-                np_grad_weight[n,m] = sig.convolve2d(
-                        np_input[n,m,::-1,::-1], 
-                        np_grad_output[n,m])[c-1:-(c-1),d-1:-(d-1)]
-        print('customConv2DFn::backward: ', np_grad_input.shape, np_grad_weight.shape)
-        return Variable(torch.from_numpy(np_grad_input)), \
-               Variable(torch.from_numpy(np_grad_weight.sum(0).squeeze()))
+#            for m in range(b):
+            m=0
+            np_grad_input[n,m] = sig.convolve2d(
+                    np_grad_output[n,m], 
+                    np_weight[::-1,::-1])[p-1:-(p-1),q-1:-(q-1)]
+            np_grad_weight[n,m] = sig.convolve2d(
+                    np_input[n,m,::-1,::-1], 
+                    np_grad_output[n,m])[c-1:-(c-1),d-1:-(d-1)]
+#        print('customConv2DFn::backward: ', np_grad_input.shape, np_grad_weight.shape)
+        return Variable(torch.from_numpy(np_grad_input)).float().cuda(), \
+               Variable(torch.from_numpy(np_grad_weight.sum(0).squeeze())).float().cuda()
 
 class customConv2D(nn.Module):
     def __init__(self):
